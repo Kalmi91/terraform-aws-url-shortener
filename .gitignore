@@ -1,0 +1,29 @@
+# Terraform working files
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Local-only variable values
+*.tfvars.local
+
+# Lambda build artifacts
+modules/lambda/*.zip
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# NOTE: .terraform.lock.hcl is intentionally committed (provider pinning).
