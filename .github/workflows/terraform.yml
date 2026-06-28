@@ -46,6 +46,8 @@ jobs:
           tflint_version: latest
 
       - name: TFLint
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tflint --init
           tflint --recursive
