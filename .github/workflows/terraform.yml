@@ -10,6 +10,7 @@ on:
       - ".github/workflows/terraform.yml"
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -75,9 +76,9 @@ jobs:
         run: terraform plan -var-file=environments/${{ env.ENVIRONMENT }}/terraform.tfvars
 
   apply:
-    name: Apply
+    name: Apply (manual dispatch)
     needs: validate
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     environment: dev
     steps:
