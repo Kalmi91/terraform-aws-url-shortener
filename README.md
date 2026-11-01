@@ -9,7 +9,7 @@ a GitHub Actions CI/CD pipeline.
 
 > Built as a portfolio project to demonstrate real-world Terraform + AWS
 > practices: module composition, remote state with locking, least-privilege
-> IAM, and an automated `fmt → validate → tflint → plan → apply` pipeline.
+> IAM, and a `fmt → validate → tflint → tests` pipeline with plan/apply on demand.
 
 ---
 
