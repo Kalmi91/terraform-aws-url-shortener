@@ -11,8 +11,9 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-# Local-only variable values
+# Local-only variable values and backend settings (copy backend.hcl.example)
 *.tfvars.local
+environments/*/backend.hcl
 
 # Lambda build artifacts
 modules/lambda/*.zip
@@ -20,6 +21,8 @@ modules/lambda/*.zip
 # Python
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.venv/
 
 # Editor / OS
 .DS_Store

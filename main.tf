@@ -21,4 +21,7 @@ module "api_gateway" {
   redirect_lambda_arn  = module.lambda.redirect_invoke_arn
   shorten_lambda_name  = module.lambda.shorten_function_name
   redirect_lambda_name = module.lambda.redirect_function_name
+
+  throttling_rate_limit  = var.api_throttling_rate_limit
+  throttling_burst_limit = var.api_throttling_burst_limit
 }
