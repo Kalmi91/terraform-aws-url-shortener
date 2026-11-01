@@ -1,5 +1,7 @@
 # Serverless URL Shortener, AWS + Terraform
 
+[![Terraform](https://github.com/Kalmi91/terraform-aws-url-shortener/actions/workflows/terraform.yml/badge.svg)](https://github.com/Kalmi91/terraform-aws-url-shortener/actions/workflows/terraform.yml)
+
 A production-style **URL shortener** deployed entirely as **Infrastructure as
 Code** with Terraform on AWS. Fully serverless (pay-per-use, fits in the AWS
 free tier), with remote state, reusable modules, multi-environment layout, and
@@ -45,17 +47,19 @@ a GitHub Actions CI/CD pipeline.
 .
 ├── bootstrap/                 # One-time: creates the S3+DynamoDB state backend
 ├── environments/
-│   ├── dev/                   # tfvars + backend.hcl for dev
-│   └── prod/                  # tfvars + backend.hcl for prod
+│   ├── dev/                   # tfvars + backend.hcl.example for dev
+│   └── prod/                  # tfvars + backend.hcl.example for prod
 ├── modules/
 │   ├── dynamodb/              # the links table
-│   ├── lambda/                # both functions + least-privilege IAM + log groups
-│   └── api_gateway/           # HTTP API, routes, integrations, invoke permissions
+│   ├── lambda/                # both functions + per-function least-privilege IAM + log groups
+│   └── api_gateway/           # HTTP API, routes, integrations, throttling, access log
 ├── src/
 │   ├── shorten/handler.py     # POST /shorten
 │   └── redirect/handler.py    # GET /{code}
+├── tests/                     # pytest + moto tests for both handlers
+├── requirements-dev.txt
 ├── main.tf / variables.tf / outputs.tf / providers.tf / versions.tf / backend.tf
-├── .github/workflows/terraform.yml   # CI: fmt, validate, tflint, plan, apply
+├── .github/workflows/terraform.yml   # CI: validate + tests on PRs; plan/apply by hand
 ├── .tflint.hcl
 └── .pre-commit-config.yaml
 ```
@@ -79,8 +83,8 @@ terraform apply -var="state_bucket_name=YOUR-GLOBALLY-UNIQUE-BUCKET"
 # note the two outputs: state_bucket and lock_table
 ```
 
-Put those values into `environments/dev/backend.hcl`
-(`bucket` and `dynamodb_table`).
+Copy `environments/dev/backend.hcl.example` to `environments/dev/backend.hcl`
+(git-ignored) and put those values into it (`bucket` and `dynamodb_table`).
 
 ### 2. Deploy the application
 
@@ -114,20 +118,31 @@ curl -i "$API/aZ3kP9x"
 
 ## CI/CD
 
-`.github/workflows/terraform.yml` runs on every pull request and on pushes to
-`main`:
+`.github/workflows/terraform.yml`:
 
-| Stage      | Trigger        | What it does                                   |
-| ---------- | -------------- | ---------------------------------------------- |
-| `validate` | PR + push      | `terraform fmt -check`, `validate`, `tflint`   |
-| `plan`     | PR             | `terraform plan` against `dev`                 |
-| `apply`    | push to `main` | `terraform apply` against `dev`                |
+| Job        | Trigger                                    | What it does                                    |
+| ---------- | ------------------------------------------ | ----------------------------------------------- |
+| `validate` | PR, push to `main`, manual run             | `terraform fmt -check`, `validate`, `tflint`    |
+| `test`     | PR, push to `main`, manual run             | `pytest` + `moto` against both Lambda handlers  |
+| `plan`     | manual `workflow_dispatch`, `action: plan`  | `terraform plan` against `dev`                  |
+| `apply`    | manual `workflow_dispatch`, `action: apply` | `terraform apply` against `dev` (`dev` environment) |
 
-`validate` needs no cloud credentials. `plan` and `apply` use two repository
-secrets, add them under **Settings → Secrets and variables → Actions**:
+`validate` and `test` need no cloud credentials. `plan` and `apply` never run
+on their own: start them from **Actions → Terraform → Run workflow** and pick
+the action.
 
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
+### One-time setup for plan and apply
+
+CI signs in to AWS with GitHub OIDC, so no AWS keys are stored in the repo.
+
+1. In IAM, add the OIDC provider `token.actions.githubusercontent.com`
+   (audience `sts.amazonaws.com`) and a role that
+   `repo:Kalmi91/terraform-aws-url-shortener:*` (condition key
+   `token.actions.githubusercontent.com:sub`) may assume, with rights to
+   manage this stack.
+2. Add two repository secrets under **Settings → Secrets and variables →
+   Actions**: `AWS_ROLE_ARN` (that role's ARN) and `TF_STATE_BUCKET` (the
+   `state_bucket` output from the bootstrap step).
 
 ## Cost
 
@@ -155,6 +170,7 @@ cd bootstrap && terraform destroy -var="state_bucket_name=YOUR-BUCKET"
 terraform fmt -recursive
 terraform init -backend=false && terraform validate
 tflint --init && tflint --recursive
+pip install -r requirements-dev.txt && pytest
 pre-commit run --all-files   # optional, if pre-commit is installed
 ```
 
