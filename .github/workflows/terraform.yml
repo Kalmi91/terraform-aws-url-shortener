@@ -7,17 +7,24 @@ on:
       - "**.tfvars"
       - "**.hcl"
       - "src/**"
+      - "tests/**"
+      - "requirements-dev.txt"
       - ".github/workflows/terraform.yml"
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      action:
+        description: "Terraform action to run against dev (needs the AWS secrets)"
+        type: choice
+        options: [plan, apply]
+        default: plan
 
 permissions:
   contents: read
-  pull-requests: write
 
 env:
-  TF_VERSION: "1.9.8"
+  TF_VERSION: "1.17.1"
   AWS_REGION: "eu-central-1"
   ENVIRONMENT: "dev"
 
@@ -26,9 +33,9 @@ jobs:
     name: Validate (fmt + validate + tflint)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -41,7 +48,7 @@ jobs:
       - name: Terraform validate
         run: terraform validate
 
-      - uses: terraform-linters/setup-tflint@v4
+      - uses: terraform-linters/setup-tflint@v6
         with:
           tflint_version: latest
 
@@ -52,27 +59,52 @@ jobs:
           tflint --init
           tflint --recursive
 
-  plan:
-    name: Plan
-    needs: validate
-    if: github.event_name == 'pull_request'
+  test:
+    name: Test (pytest + moto)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Install test dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run handler tests
+        run: pytest
+
+  plan:
+    name: Plan (manual dispatch)
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'plan'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform init
-        run: terraform init -backend-config=environments/${{ env.ENVIRONMENT }}/backend.hcl
+        run: |
+          # The example holds key, region and lock table; the bucket comes from a secret.
+          grep -v '^bucket' environments/${{ env.ENVIRONMENT }}/backend.hcl.example > "$RUNNER_TEMP/backend.hcl"
+          terraform init \
+            -backend-config="$RUNNER_TEMP/backend.hcl" \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}"
 
       - name: Terraform plan
         run: terraform plan -var-file=environments/${{ env.ENVIRONMENT }}/terraform.tfvars
@@ -80,25 +112,32 @@ jobs:
   apply:
     name: Apply (manual dispatch)
     needs: validate
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && inputs.action == 'apply'
     runs-on: ubuntu-latest
     environment: dev
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Terraform init
-        run: terraform init -backend-config=environments/${{ env.ENVIRONMENT }}/backend.hcl
+        run: |
+          # The example holds key, region and lock table; the bucket comes from a secret.
+          grep -v '^bucket' environments/${{ env.ENVIRONMENT }}/backend.hcl.example > "$RUNNER_TEMP/backend.hcl"
+          terraform init \
+            -backend-config="$RUNNER_TEMP/backend.hcl" \
+            -backend-config="bucket=${{ secrets.TF_STATE_BUCKET }}"
 
       - name: Terraform apply
         run: terraform apply -auto-approve -var-file=environments/${{ env.ENVIRONMENT }}/terraform.tfvars

@@ -14,3 +14,15 @@ variable "environment" {
   description = "Deployment environment identifier (e.g. dev, prod)"
   type        = string
 }
+
+variable "api_throttling_rate_limit" {
+  description = "Steady-state requests per second allowed on the API stage"
+  type        = number
+  default     = 10
+}
+
+variable "api_throttling_burst_limit" {
+  description = "Maximum burst of concurrent requests allowed on the API stage"
+  type        = number
+  default     = 20
+}
