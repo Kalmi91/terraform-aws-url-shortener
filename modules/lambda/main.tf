@@ -20,33 +20,58 @@ data "aws_iam_policy_document" "assume_role" {
   }
 }
 
-resource "aws_iam_role" "lambda" {
-  name               = "${var.name_prefix}-lambda-role"
+# One role per function so each gets only the DynamoDB action it needs.
+resource "aws_iam_role" "shorten" {
+  name               = "${var.name_prefix}-shorten-role"
   assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
-resource "aws_iam_role_policy_attachment" "basic_execution" {
-  role       = aws_iam_role.lambda.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+resource "aws_iam_role" "redirect" {
+  name               = "${var.name_prefix}-redirect-role"
+  assume_role_policy = data.aws_iam_policy_document.assume_role.json
 }
 
-# Least-privilege: the functions may only read/write the project's own table.
-data "aws_iam_policy_document" "dynamodb_access" {
+# Least-privilege: shorten may only write, redirect may only read, both
+# against the project's own table, plus writing to their own log group.
+data "aws_iam_policy_document" "shorten" {
   statement {
-    actions   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+    actions   = ["dynamodb:PutItem"]
     resources = [var.dynamodb_arn]
+  }
+
+  statement {
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${aws_cloudwatch_log_group.shorten.arn}:*"]
   }
 }
 
-resource "aws_iam_role_policy" "dynamodb_access" {
-  name   = "${var.name_prefix}-dynamodb-access"
-  role   = aws_iam_role.lambda.id
-  policy = data.aws_iam_policy_document.dynamodb_access.json
+data "aws_iam_policy_document" "redirect" {
+  statement {
+    actions   = ["dynamodb:GetItem"]
+    resources = [var.dynamodb_arn]
+  }
+
+  statement {
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+    resources = ["${aws_cloudwatch_log_group.redirect.arn}:*"]
+  }
+}
+
+resource "aws_iam_role_policy" "shorten" {
+  name   = "${var.name_prefix}-shorten-access"
+  role   = aws_iam_role.shorten.id
+  policy = data.aws_iam_policy_document.shorten.json
+}
+
+resource "aws_iam_role_policy" "redirect" {
+  name   = "${var.name_prefix}-redirect-access"
+  role   = aws_iam_role.redirect.id
+  policy = data.aws_iam_policy_document.redirect.json
 }
 
 resource "aws_lambda_function" "shorten" {
   function_name    = "${var.name_prefix}-shorten"
-  role             = aws_iam_role.lambda.arn
+  role             = aws_iam_role.shorten.arn
   runtime          = "python3.12"
   handler          = "handler.handler"
   filename         = data.archive_file.shorten.output_path
@@ -62,7 +87,7 @@ resource "aws_lambda_function" "shorten" {
 
 resource "aws_lambda_function" "redirect" {
   function_name    = "${var.name_prefix}-redirect"
-  role             = aws_iam_role.lambda.arn
+  role             = aws_iam_role.redirect.arn
   runtime          = "python3.12"
   handler          = "handler.handler"
   filename         = data.archive_file.redirect.output_path
