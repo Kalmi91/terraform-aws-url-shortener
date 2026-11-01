@@ -51,6 +51,7 @@ def test_shorten_gives_up_when_every_code_collides(shorten, table, monkeypatch):
         {"url": "not-a-url"},
         {"url": "ftp://example.com/file"},
         {"url": "https://"},
+        {"url": "http://[::1"},
         {"url": ""},
         {"url": 42},
         {"url": "https://example.com/" + "a" * 2048},

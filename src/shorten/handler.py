@@ -32,7 +32,10 @@ def _response(status: int, body: dict) -> dict:
 def _is_valid_url(url) -> bool:
     if not isinstance(url, str) or not url or len(url) > _MAX_URL_LENGTH:
         return False
-    parsed = urlparse(url)
+    try:
+        parsed = urlparse(url)
+    except ValueError:  # e.g. an unclosed IPv6 host such as "http://[::1"
+        return False
     return parsed.scheme in ("http", "https") and bool(parsed.netloc)
 
 
