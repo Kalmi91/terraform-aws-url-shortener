@@ -3,10 +3,34 @@ resource "aws_apigatewayv2_api" "this" {
   protocol_type = "HTTP"
 }
 
+resource "aws_cloudwatch_log_group" "access" {
+  name              = "/aws/apigateway/${var.name_prefix}-api"
+  retention_in_days = 14
+}
+
 resource "aws_apigatewayv2_stage" "default" {
   api_id      = aws_apigatewayv2_api.this.id
   name        = "$default"
   auto_deploy = true
+
+  default_route_settings {
+    throttling_rate_limit  = var.throttling_rate_limit
+    throttling_burst_limit = var.throttling_burst_limit
+  }
+
+  access_log_settings {
+    destination_arn = aws_cloudwatch_log_group.access.arn
+    format = jsonencode({
+      requestId               = "$context.requestId"
+      requestTime             = "$context.requestTime"
+      sourceIp                = "$context.identity.sourceIp"
+      httpMethod              = "$context.httpMethod"
+      routeKey                = "$context.routeKey"
+      status                  = "$context.status"
+      responseLength          = "$context.responseLength"
+      integrationErrorMessage = "$context.integrationErrorMessage"
+    })
+  }
 }
 
 resource "aws_apigatewayv2_integration" "shorten" {
