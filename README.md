@@ -136,10 +136,13 @@ the action.
 CI signs in to AWS with GitHub OIDC, so no AWS keys are stored in the repo.
 
 1. In IAM, add the OIDC provider `token.actions.githubusercontent.com`
-   (audience `sts.amazonaws.com`) and a role that
-   `repo:Kalmi91/terraform-aws-url-shortener:*` (condition key
-   `token.actions.githubusercontent.com:sub`) may assume, with rights to
-   manage this stack.
+   (audience `sts.amazonaws.com`) and a role with rights to manage this stack.
+   Limit its trust policy with the condition key
+   `token.actions.githubusercontent.com:sub` to exactly two values, no
+   wildcard: `repo:Kalmi91/terraform-aws-url-shortener:ref:refs/heads/main`
+   (the `plan` job, run from `main`) and
+   `repo:Kalmi91/terraform-aws-url-shortener:environment:dev` (the `apply`
+   job, which uses the `dev` environment).
 2. Add two repository secrets under **Settings → Secrets and variables →
    Actions**: `AWS_ROLE_ARN` (that role's ARN) and `TF_STATE_BUCKET` (the
    `state_bucket` output from the bootstrap step).
